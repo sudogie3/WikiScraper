@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 #Musze wybrać jakiego typu ma być to wiki (kanye west , marvel , ekipa friza)
 
 class Scraper():
-    link = None
+    instance = None
     def __init__(self , link_URL ,use_local_html_file_instead=False ):
         self.link = link_URL
         self.use_lokal = use_local_html_file_instead
@@ -20,15 +20,17 @@ class Scraper():
             else:
                 phrase_tmp = phrase_tmp + charackter
         print(phrase_tmp)
-        URL_tmp = URL
-        while (URL_tmp[-1] != '/'):
-            URL_tmp -= URL_tmp[-1]
+        URL_tmp = self.link + '/'
         URL_tmp += phrase_tmp
+        print(URL_tmp)
         response = requests.get(URL_tmp)
         print(response.status_code)
         if response.status_code != 200:
-            print("Błąd pobrania strony")
+            print(f"Nie ma takiej strony: {URL_tmp}")
         soup = BeautifulSoup(response.text, 'html.parser')
+        para = soup.find('p').text
+        print(para)
+    def table(self , phrase , number , first_row_header):
 
         
 
