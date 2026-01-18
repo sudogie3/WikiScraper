@@ -1,7 +1,10 @@
 import argparse
 import csv
 import json
+import time
+from itertools import count
 from pickle import FALSE
+from pydoc import replace
 
 import numpy as np
 import wordfreq
@@ -19,15 +22,6 @@ class Scraper():
         self.link = link_URL
         self.use_lokal = use_local_html_file_instead
 
-    def changingSpaceTo_(self , phrase):
-        phrase_tmp = ''
-        for charackter in phrase:
-            if charackter == ' ':
-                phrase_tmp = phrase_tmp + '_'
-            else:
-                phrase_tmp = phrase_tmp + charackter
-        return phrase_tmp
-
     def SiteDownloader(self, URL):
         response = requests.get(URL)
         if response.status_code != 200:
@@ -37,7 +31,7 @@ class Scraper():
         return soup
 
     def summary(self , phrase):
-        phrase_tmp = self.changingSpaceTo_(phrase)
+        phrase_tmp = phrase.replace(" " , "_")
         URL_tmp = self.link + '/' + phrase_tmp
         soup = self.SiteDownloader(URL_tmp)
         # zrobić to w div class
@@ -46,7 +40,7 @@ class Scraper():
 
 
     def table(self , phrase , number , first_row_header = False):
-        phrase_tmp = self.changingSpaceTo_(phrase)
+        phrase_tmp = phrase.replace(" " , "_")
         URL_tmp = self.link + '/' + phrase_tmp
         soup = self.SiteDownloader(URL_tmp)
         file_name = f'{phrase_tmp}.csv'
@@ -77,18 +71,15 @@ class Scraper():
             return
         text = soup.find("div" , class_ = "mw-content-ltr mw-parser-output").get_text(strip=True , separator=" ")
 
-        skips ={"(" , ")" , "[" , "]" , "{" , "}" , "\"" , "\'" , ";" , ":" , "*" , "!" , "?" , "`", "." , "," , "'" , "/" ,"…" , '”' ,'"' ,'“' , "’","×" }
-
         words = []
         word = ""
         for letter in text:
             if letter == " ":
                 words.append(word)
                 word = ""
-            elif letter in skips or letter.isdigit():
-                pass
-            else:
+            elif letter.isalpha() or letter == "-":
                 word += letter.lower()
+
         #deleting hyperlinks
         i = 0
         while i < len(words):
@@ -118,7 +109,7 @@ class Scraper():
             return False
         with open("./word-count.json" , "r" , encoding="utf-8") as file:
             siteData = json.load(file)
-        phrase_tmp = self.changingSpaceTo_(phrase)
+        phrase_tmp = phrase.replace(" " , "_")
         response = requests.get(self.link + '/' + phrase_tmp)
         language = response.headers.get("Content-Language")
         setFrequencyLang = {}
@@ -175,17 +166,67 @@ class Scraper():
         plt.savefig(chart)
         return None
 
-    def auto_count_words(self):
-        pass
+    def help_auto_count_words(self, phrase, depth, wait, alreadyProcessed):
+        print(f"Jestem {phrase} i glębokość to {depth}")
+
+        with open("./word-count.json" , "r", encoding='utf-8') as file:
+            alreadyProcessdWords = json.load(file)
 
 
+        time.sleep(wait) # zasypiamy na wait sekund
+
+        self.count_words(phrase)
+        with open("./word-count.json", "r", encoding='utf-8') as file:
+            newWords = json.load(file)
+
+        #merguje je
+        for k, v in alreadyProcessdWords.items():
+            if k in newWords:
+                newWords[k] += v  # dodajemy wartości
+            else:
+                newWords[k] = v  # jeśli klucz nowy, dodajemy
+
+        with open("./word-count.json" , "w" , encoding='utf-8') as file:
+            json.dump(newWords ,file , ensure_ascii=False)
+        print(newWords['the'])
+        if depth == 0:
+            return
+
+        soup = self.SiteDownloader(self.link + "/" + phrase)
+
+        para = soup.find_all('p')
+        hyperlinks = []
+        for paragraph in para:
+            tmp_link = paragraph.find('a')
+            if (tmp_link and ('href' in tmp_link.attrs) and
+                    (len(tmp_link['href']) >= 6) and (tmp_link['href'][:6] == "/wiki/")):
+                hyperlinks.append(tmp_link['href'][6:])
 
 
+        for hyperlink in hyperlinks:
+            if hyperlink not in alreadyProcessed:
+                alreadyProcessed.append(hyperlink)
+                self.help_auto_count_words(hyperlink, depth - 1, wait, alreadyProcessed)
 
 
-        
+    def auto_count_words(self , phrase , depth , wait):
+        # szukamy hyperlączy
+        soup = self.SiteDownloader(self.link + "/" + phrase)
 
+        para = soup.find_all('p')
+        hyperlinks = []
+        for paragraph in para:
+            tmp_link = paragraph.find('a')
+            if (tmp_link and ('href' in tmp_link.attrs) and
+                    (len(tmp_link['href']) >= 6) and (tmp_link['href'][:6] == "/wiki/")):
+                hyperlinks.append(tmp_link['href'][6:])
 
+        self.count_words(phrase)
+        alreadyProcessed = []
+        for hyperlink in hyperlinks:
+            if hyperlink not in alreadyProcessed:
+                alreadyProcessed.append(hyperlink)
+                self.help_auto_count_words(hyperlink , depth - 1 , wait , alreadyProcessed)
 
 def creating_parser():
     parser = argparse.ArgumentParser()
@@ -210,7 +251,8 @@ def creating_parser():
 
 
 if __name__ == '__main__':
-    URL = 'https://bulbapedia.bulbagarden.net/wiki'
+    URL = 'https://bulbapedia.bulbagarden.net/wiki' #to jest scrapper tej wiki
     obiekt = Scraper(URL)
-    #obiekt.table('Type' , 2)
-    obiekt.analyze_relative_word_freq('Type' , "language" , 3, chart = './compare-Frequency.png')
+
+
+
