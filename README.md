@@ -1,7 +1,7 @@
 # WikiScraper – Python Wiki Scraping Tool
 
 WikiScraper is a Python project created as a final grade assignment for a Python course.  
-It allows users to scrape and analyze must wiki's pages for educational and data-processing purposes.
+It allows users to scrape and analyze most of wiki pages for educational and data-processing purposes.
 
 The tool can be used to:
 
