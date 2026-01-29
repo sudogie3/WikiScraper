@@ -1,7 +1,10 @@
 import argparse
 import csv
 import json
+import os.path
 import time
+from xxlimited_35 import Null
+
 import wordfreq
 import requests
 import pandas as pd
@@ -14,13 +17,13 @@ from bs4 import BeautifulSoup
 
 class Scraper:
 
-    def __init__(self, link_URL, use_local_html_file_instead=False):
-        self.link = link_URL
-        self.use_lokal = use_local_html_file_instead
+    def __init__(self, link=None, use_local_html_file_instead=False):
+        self.link = link
+        self.use_local = use_local_html_file_instead
         self.used_count_words = False
-        self.language = ""
+        self.language = None
         self.alreadyProcessed = {}
-        self.pierwszy = True
+        self.first = True
 
     def SiteDownloader(self, URL):
         response = requests.get(URL)
@@ -32,28 +35,46 @@ class Scraper:
 
     # zrobiona
     def summary(self, phrase):
-        if phrase is None:
+        if phrase is None or (self.link is None != self.use_local is None):
             return None
         phrase_tmp = phrase.replace(" ", "_")
-        URL_tmp = self.link + "/" + phrase_tmp
-        soup = self.SiteDownloader(URL_tmp)
-        if soup is None:
+
+        if self.use_local == True:
+            path = f"./{phrase_tmp}.html"
+            if not os.path.exists(path):
+                return None
+            with open(path , 'r' , encoding='utf-8') as file:
+                htmlText = file.read()
+            soup = BeautifulSoup(htmlText , "html.parser")
+        else:
+            URL_tmp = self.link + "/" + phrase_tmp
+            soup = self.SiteDownloader(URL_tmp)
+
+        if soup is None or '':
             return None
-        # zrobić to w div class
         div = soup.find("div", class_="mw-content-ltr mw-parser-output")
         if div is None:
             print(f"Brak artykułu {phrase} an stronie {self.link}")
             return None
         para = div.find("p").get_text()
         print(para)
+        return para
 
     # poprawić foramtowanie tabeli i dodac counta
     def table(self, phrase, number, first_row_header=False):
-        if phrase is None:
+        if phrase is None or (self.link is None != self.use_local is None):
             return None
         phrase_tmp = phrase.replace(" ", "_")
         URL_tmp = self.link + "/" + phrase_tmp
-        soup = self.SiteDownloader(URL_tmp)
+        if self.use_local:
+            path = f"./{phrase_tmp}.html"
+            if not os.path.exists(path):
+                return None
+            with open(path, 'r', encoding='utf-8') as file:
+                htmlText = file.read()
+            soup = BeautifulSoup(htmlText, "html.parser")
+        else:
+            soup = self.SiteDownloader(URL_tmp)
 
         tables = soup.find_all("table")
         if number > len(tables):
@@ -91,17 +112,36 @@ class Scraper:
         with open(f"{phrase_tmp}.csv", "w", encoding="utf-8") as file:
             writer = csv.writer(file, delimiter=";")
             writer.writerows(tableForPandas)
-        return None
+        return df, df2
     # zrobione
+    def what_language_offline(self, phrase):
+        phrase_tmp = phrase.replace(" ", "_")
+        path = f"./{phrase_tmp}.html"
+        if not os.path.exists(path):
+            return None
+        with open(path, 'r', encoding='utf-8') as file:
+            htmlText = file.read()
+        soup = BeautifulSoup(htmlText, "html.parser")
+        return soup.find('html').get('lang')
+
     def count_words(self, phrase):
-        if phrase is None:
+        if phrase is None or (self.link is None != self.use_local is None):
             return None
         phrase_tmp = phrase.replace(" ", "_")
-        soup = self.SiteDownloader(self.link + "/" + phrase_tmp)
-        if self.language == "":
-            response = requests.get(self.link + "/" + phrase_tmp)
-            self.language = response.headers.get("Content-Language")
 
+        if self.use_local == True:
+            path = f"./{phrase_tmp}.html"
+            if not os.path.exists(path):
+                return None
+
+            with open(path, 'r' , encoding='utf-8') as file:
+                htmlText = file.read()
+            soup = BeautifulSoup(htmlText , "html.parser")
+        else:
+            URL_tmp = self.link + "/" + phrase_tmp
+            soup = self.SiteDownloader(URL_tmp)
+
+        self.language = soup.find('html').get('lang')
         if soup is None:
             return
 
@@ -216,27 +256,27 @@ class Scraper:
         return None
 
     def auto_count_words(self, phrase, depth, wait):
-        if phrase is None or depth < 0 or wait < 0:
+        if phrase is None or depth < 0 or wait < 0 or (self.link is None != self.use_local is None):
             return
         # print(f"Jestem w {phrase}")
         # zasypiamy na wait sekund
         time.sleep(wait)
-        if self.pierwszy:
+        if self.first:
             self.count_words(phrase)
-            self.pierwszy = False
+            self.first = False
         else:
             with open("./word-count.json", "r", encoding="utf-8") as file:
                 alreadyProcessdWords = json.load(file)
 
 
-            if not self.pierwszy:
+            if not self.first:
                 self.count_words(phrase)
 
             with open("./word-count.json", "r", encoding="utf-8") as file:
                 newWords = json.load(file)
 
-            if self.pierwszy:
-                self.pierwszy = False
+            if self.first:
+                self.first = False
 
             # merguje je
             for k, v in alreadyProcessdWords.items():
@@ -379,5 +419,5 @@ if __name__ == "__main__":
     URL = "https://bulbapedia.bulbagarden.net/wiki"
     controler = Control(URL)
     controler.iterateArguments()
-    # obiekt = Scraper(URL)
-    # obiekt.auto_count_words('Type' , 2 , 0.1)
+    obiekt = Scraper(URL , use_local_html_file_instead=True)
+    obiekt.summary('Team Rocket')
