@@ -13,16 +13,16 @@ BannedLinks = (
     "/wiki/Template:",
     "/wiki/MediaWiki:",
     "/wiki/User:",
-    "/wiki/Category:" "/wiki/Special:",
+    "/wiki/Category:",
+    "/wiki/Special:",
     "/wiki/Help:",
 )
 
-"""Function that takes the html code and gets the language"""
-
 
 def whatLanguageOffline(phrase):
+    """Function that takes the HTML code and gets the language"""
     phrase_tmp = phrase.replace(" ", "_")
-    path = f"./{phrase_tmp}.html"
+    path = f"WikiPages/{phrase_tmp}.html"
     if not os.path.exists(path):
         return None
     with open(path, "r", encoding="utf-8") as file:
@@ -31,10 +31,9 @@ def whatLanguageOffline(phrase):
     return soup.find("html").get("lang")
 
 
-"""Function that checks if the sufix of the page is Wiki"""
-
 
 def isItWikiPage(phrase):
+    """Function that checks if the sufix of the page is Wiki"""
     if phrase is None:
         return False
     prefix = "/wiki/"
@@ -43,32 +42,39 @@ def isItWikiPage(phrase):
     return False
 
 
-"""Function that extract a phrase from link"""
-
 
 def extractPhrase(phrase):
+    """Function that extract a phrase from link"""
     prefix = "/wiki/"
     if isItWikiPage(phrase):
         return phrase[len(prefix) :]
     return None
 
 
-"""Function which downloads a site"""
 
-
-def SiteDownloader(URL):
+def siteDownloader(URL):
+    """Function which downloads a site"""
     response = requests.get(URL)
     if response.status_code != 200:
-        print(f"Nie ma takiej strony: {URL} lub nie działa, kod request {response}")
+        print(f"Site doesn't exist: {URL} or do not work, request code {response}")
         return None
     soup = BeautifulSoup(response.text, "html.parser")
     return soup
 
+def siteDownloaderOffline(phrase):
+    """Function for taking the soup from HTML code"""
+    path = f"WikiPages/{phrase}.html"
+    if not os.path.exists(path):
+        return False
 
-"""Function that gives table of lower case separated words"""
-
+    with open(path, "r", encoding="utf-8") as file:
+        htmlText = file.read()
+    soup = BeautifulSoup(htmlText, "html.parser")
+    return soup
 
 def getWordsFromText(text):
+    """Function that gives table of lower case separated words"""
+    #usage for count-words func
     if text is None:
         return None
     text = str(text)
@@ -87,18 +93,18 @@ def getWordsFromText(text):
 
 
 def InBanned(phrase):
+    """Checking if the link is not article"""
     for link in BannedLinks:
-        if len(phrase) >= len(link) and phrase[len(link)] == link:
+        if len(phrase) >= len(link) and phrase[:len(link)] == link:
             return True
     return False
 
 
-"""Whole scraper class that has methods which do all the main functionalities"""
-
 
 class Scraper:
+    """Whole scraper class that has methods which do all the main functionalities"""
     def __init__(self, link=None, use_local_html_file_instead=False):
-        if link is not None and use_local_html_file_instead:
+        if (link is not None and use_local_html_file_instead) or (link is None and not use_local_html_file_instead):
             raise ValueError(
                 "Error, you can not give link and set the local_usage argument simultaneously, please choose only one"
             )
@@ -108,7 +114,7 @@ class Scraper:
         self.used_count_words = False
         self.language = None
         # used for the auto-count function
-        self.alreadyProcessed = {}
+        self.alreadyProcessed = set()
         self.first = True
 
     def summary(self, phrase):
@@ -118,20 +124,13 @@ class Scraper:
         phrase_tmp = phrase.replace(" ", "_")
         # checks if we use local file if not then we download
         if self.use_local:
-            path = f"WikiPages/{phrase_tmp}.html"
-            # checks if path exist
-            if not os.path.exists(path):
-                return False
-            # if yes then we read it
-            with open(path, "r", encoding="utf-8") as file:
-                htmlText = file.read()
-            soup = BeautifulSoup(htmlText, "html.parser")
+            siteDownloaderOffline(phrase_tmp)
         else:
             # goes to SiteDownloader func to get the soup-ed HTML page
             URL_tmp = self.link + "/" + phrase_tmp
-            soup = SiteDownloader(URL_tmp)
+            soup = siteDownloader(URL_tmp)
 
-        if soup is None or "":
+        if soup is None:
             return False
         # get the first div
         div = soup.find("div", class_="mw-parser-output")
@@ -144,24 +143,19 @@ class Scraper:
 
     def table(self, phrase, number, first_row_header=False):
         # check if the args are correct
-        if phrase is None:
+        if phrase is None or number < 0:
             return False
         phrase_tmp = phrase.replace(" ", "_")
         URL_tmp = self.link + "/" + phrase_tmp
         if self.use_local:
             # looks for the file in the WikiPages
-            path = f"WikiPages/{phrase_tmp}.html"
-            if not os.path.exists(path):
-                return False
-            with open(path, "r", encoding="utf-8") as file:
-                htmlText = file.read()
-            soup = BeautifulSoup(htmlText, "html.parser")
+            soup = siteDownloaderOffline(phrase_tmp)
         else:
-            soup = SiteDownloader(URL_tmp)
+            soup = siteDownloader(URL_tmp)
         # finding all the tables in soup
         tables = soup.find_all("table")
         if number > len(tables):
-            print(f"Na stronie {URL_tmp} nie ma tylu tabel")
+            print(f"Site {URL_tmp} doesn't have this many tables")
             return False
 
         table = tables[number - 1]
@@ -183,16 +177,16 @@ class Scraper:
         df = df.set_index(df.columns[0])
         print(df)
         # count words that occur in table (except index and headers)
-        setOfWords = {}
+        dictOfWords = {}
         for i in range(first_row_header, len(tableForPandas)):
             for j in range(1, len(tableForPandas[i])):
                 data = tableForPandas[i][j]
-                if data in setOfWords:
-                    setOfWords[data] += 1
+                if data in dictOfWords:
+                    dictOfWords[data] += 1
                 else:
-                    setOfWords[data] = 1
+                    dictOfWords[data] = 1
 
-        df2 = pd.DataFrame(setOfWords.items(), columns=["word", "count"])
+        df2 = pd.DataFrame(dictOfWords.items(), columns=["word", "count"])
         print(df2)
         # write it to csv file
         with open(f"{phrase_tmp}.csv", "w", encoding="utf-8") as file:
@@ -206,16 +200,10 @@ class Scraper:
             return False
         phrase_tmp = phrase.replace(" ", "_")
         if self.use_local:
-            path = f"WikiPages/{phrase_tmp}.html"
-            if not os.path.exists(path):
-                return False
-
-            with open(path, "r", encoding="utf-8") as file:
-                htmlText = file.read()
-            soup = BeautifulSoup(htmlText, "html.parser")
+            soup = siteDownloaderOffline(phrase_tmp)
         else:
             URL_tmp = self.link + "/" + phrase_tmp
-            soup = SiteDownloader(URL_tmp)
+            soup = siteDownloader(URL_tmp)
 
         if soup is None:
             return False
@@ -241,15 +229,15 @@ class Scraper:
             else:
                 i += 1
         # now we count words
-        setOfWords = {}
+        dictOfWords = {}
         for word in words:
-            if word not in setOfWords:
-                setOfWords[word] = 1
+            if word not in dictOfWords:
+                dictOfWords[word] = 1
             else:
-                setOfWords[word] += 1
+                dictOfWords[word] += 1
         # we put the results into json file
         with open("./word-count.json", "w", encoding="utf-8") as file:
-            json.dump(setOfWords, file, ensure_ascii=False)
+            json.dump(dictOfWords, file, ensure_ascii=False)
         self.used_count_words = True
         return True
 
@@ -259,7 +247,7 @@ class Scraper:
             return False
         if (
             mode not in {"article", "language"}
-            or count < 0
+            or count <= 0
             or (
                 chart is not None
                 and len(chart) < 4
@@ -272,23 +260,26 @@ class Scraper:
             siteData = json.load(file)
         dictFrequencyLang = {}
         dictFrequencyArticle = {}
-        sumWords = 0
+        sumWordsInArticle = 0
         # we take the most used word for normalizing words
         mostFrequencyLang = wordfreq.word_frequency(
             wordfreq.top_n_list(n=1, lang=self.language)[0], self.language
         )
+        if len(siteData) == 0:
+            return False
         # normalizing the language words
         for word in siteData:
             dictFrequencyLang[word] = (
                 wordfreq.word_frequency(word, lang=self.language) / mostFrequencyLang
             )
             # we count how many words are in the article
-            sumWords += siteData[word]
-        mostFrequencyArticle = max(siteData.values()) / sumWords
+            sumWordsInArticle += siteData[word]
+        mostFrequencyArticle = max(siteData.values()) / sumWordsInArticle
+
 
         for word in siteData:
             dictFrequencyArticle[word] = (
-                siteData[word] / sumWords
+                siteData[word] / sumWordsInArticle
             ) / mostFrequencyArticle
         # we make two tables of the words and frequency
         df1 = pd.DataFrame(
@@ -331,15 +322,15 @@ class Scraper:
 
     def auto_count_words(self, phrase, depth, wait):
         if phrase is None or depth < 0 or wait < 0:
-            return
+            return False
         # print(f"I'm in {phrase}")
         # we sleep for wait seconds
-        time.sleep(wait)
         if self.first:
-            # if first all we do is count_word
+            # if first all we do is single count_word
             self.count_words(phrase)
             self.first = False
         else:
+            time.sleep(wait)
             # if it is not first then we take the dict from json
             with open("./word-count.json", "r", encoding="utf-8") as file:
                 alreadyProcessdWords = json.load(file)
@@ -365,17 +356,15 @@ class Scraper:
 
         phrase_tmp = phrase.replace(" ", "_")
         if self.use_local:
-            path = f"WikiPages/{phrase_tmp}.html"
-            if not os.path.exists(path):
-                return False
-            with open(path, "r", encoding="utf-8") as file:
-                htmlText = file.read()
-            soup = BeautifulSoup(htmlText, "html.parser")
+            soup = siteDownloaderOffline(phrase_tmp)
         else:
             URL_tmp = self.link + "/" + phrase_tmp
-            soup = SiteDownloader(URL_tmp)
+            soup = siteDownloader(URL_tmp)
         # we search for hyperlinks
-        para = soup.find_all("p")
+        div = soup.find("div", class_="mw-parser-output")
+        if div is None:
+            return False
+        para = div.find_all("p")
         hyperlinks = []
         for paragraph in para:
             # we take the attributes
@@ -387,12 +376,11 @@ class Scraper:
                     and (isItWikiPage(link["href"]))
                     and not InBanned(link["href"])
                 ):
-                    hyperlinks.append(extractPhrase["href"])
+                    hyperlinks.append(extractPhrase(link["href"]))
 
-        alreadyProcessed = []
         for hyperlink in hyperlinks:
             # if we didn't process it then we do
-            if hyperlink not in alreadyProcessed:
-                alreadyProcessed.append(hyperlink)
+            if hyperlink not in self.alreadyProcessed:
+                self.alreadyProcessed.add(hyperlink)
                 self.auto_count_words(hyperlink, depth - 1, wait)
         return True

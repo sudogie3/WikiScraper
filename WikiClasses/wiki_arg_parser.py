@@ -1,5 +1,5 @@
 import argparse
-from WikiClasses.wiki_scraper_class import Scraper
+from .wiki_scraper_class import Scraper
 
 
 def creating_parser():
